@@ -1,16 +1,16 @@
-# Smart Expense Tracker
+# AI Finance Dashboard
 
-A personal finance dashboard built using Streamlit.
+An AI-powered personal finance dashboard built with Streamlit.
 
 Features
-- Add manual transactions
-- Upload bank statements (CSV, Excel, PDF)
-- Automatic expense categorization
-- Asset / Liability classification
-- Net worth calculation
-- Expense charts
+- Expense tracking
+- Bank statement upload
+- Automatic categorization
+- Financial insights
+- ML spending prediction
+- Interactive charts
 
-Run locally
+Run locally:
 
 pip install -r requirements.txt
-streamlit run streamlit_app.py
+streamlit run app.py
