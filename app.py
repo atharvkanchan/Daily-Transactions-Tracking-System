@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from utils.categorizer import detect_category, detect_type
-from utils.parser import parse_bank_statement
-from utils.ml_predictor import predict_spending
 import os
+from datetime import datetime
+import numpy as np
+from sklearn.linear_model import LinearRegression
 
 FILE = "transactions.csv"
 
@@ -12,57 +12,96 @@ st.set_page_config(page_title="AI Finance Dashboard", layout="wide")
 
 st.title("💳 AI Personal Finance Dashboard")
 
-# Dark mode
-dark = st.sidebar.toggle("🌙 Dark Mode")
+# ----------------------------
+# Category Detection
+# ----------------------------
+def detect_category(desc):
 
-if dark:
-    st.markdown("""
-    <style>
-    body {background-color:#0f172a;color:white}
-    </style>
-    """, unsafe_allow_html=True)
+    desc = str(desc).lower()
 
-# Load data
+    if "uber" in desc or "ola" in desc:
+        return "Travel"
+
+    if "restaurant" in desc or "food" in desc or "pizza" in desc:
+        return "Food"
+
+    if "amazon" in desc or "shopping" in desc:
+        return "Shopping"
+
+    if "salary" in desc or "income" in desc:
+        return "Income"
+
+    if "stock" in desc or "investment" in desc:
+        return "Investment"
+
+    if "netflix" in desc:
+        return "Entertainment"
+
+    return "Other"
+
+
+# ----------------------------
+# Asset / Liability
+# ----------------------------
+def detect_type(category):
+
+    if category in ["Income","Investment"]:
+        return "Asset"
+
+    return "Liability"
+
+
+# ----------------------------
+# Load Dataset
+# ----------------------------
 if os.path.exists(FILE):
     df = pd.read_csv(FILE)
 else:
     df = pd.DataFrame(columns=["Date","Description","Amount","Category","Type"])
 
-# Sidebar input
+
+# ----------------------------
+# Sidebar
+# ----------------------------
 st.sidebar.header("Add Transaction")
 
 desc = st.sidebar.text_input("Description")
 
-amount = st.sidebar.number_input("Amount")
+amount = st.sidebar.number_input("Amount", min_value=0.0)
 
-date = st.sidebar.date_input("Date")
+date = st.sidebar.date_input("Date", datetime.today())
 
-if st.sidebar.button("Add"):
+if st.sidebar.button("Add Transaction"):
 
-    cat = detect_category(desc)
+    category = detect_category(desc)
 
-    typ = detect_type(cat)
+    t_type = detect_type(category)
 
-    new = {
-        "Date":date,
-        "Description":desc,
-        "Amount":amount,
-        "Category":cat,
-        "Type":typ
+    new_data = {
+        "Date": date,
+        "Description": desc,
+        "Amount": amount,
+        "Category": category,
+        "Type": t_type
     }
 
-    df = pd.concat([df,pd.DataFrame([new])],ignore_index=True)
+    df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
 
-    df.to_csv(FILE,index=False)
+    df.to_csv(FILE, index=False)
 
-# Upload bank statement
+    st.sidebar.success("Transaction Added")
+
+
+# ----------------------------
+# Upload Bank Statement
+# ----------------------------
 st.sidebar.header("Upload Bank Statement")
 
-file = st.sidebar.file_uploader("Upload CSV")
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 
-if file:
+if uploaded_file:
 
-    new_df = parse_bank_statement(file)
+    new_df = pd.read_csv(uploaded_file)
 
     new_df["Category"] = new_df["Description"].apply(detect_category)
 
@@ -72,7 +111,12 @@ if file:
 
     df.to_csv(FILE,index=False)
 
+    st.success("Bank Statement Imported")
+
+
+# ----------------------------
 # Metrics
+# ----------------------------
 income = df[df["Type"]=="Asset"]["Amount"].sum()
 
 expense = df[df["Type"]=="Liability"]["Amount"].sum()
@@ -81,43 +125,64 @@ networth = income - expense
 
 col1,col2,col3 = st.columns(3)
 
-col1.metric("Income",f"₹{income}")
+col1.metric("Income", f"₹{income}")
 
-col2.metric("Expenses",f"₹{expense}")
+col2.metric("Expenses", f"₹{expense}")
 
-col3.metric("Net Worth",f"₹{networth}")
+col3.metric("Net Worth", f"₹{networth}")
 
+
+# ----------------------------
 # Charts
+# ----------------------------
 st.subheader("Expense Distribution")
 
-cat = df.groupby("Category")["Amount"].sum().reset_index()
+category_data = df.groupby("Category")["Amount"].sum().reset_index()
 
-fig = px.pie(cat,names="Category",values="Amount")
+fig = px.pie(category_data, names="Category", values="Amount")
 
-st.plotly_chart(fig,use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
-# Monthly trend
+
+# ----------------------------
+# Monthly Trend
+# ----------------------------
 df["Date"] = pd.to_datetime(df["Date"])
 
 monthly = df.groupby(df["Date"].dt.month)["Amount"].sum()
 
-fig2 = px.line(monthly,title="Monthly Spending Trend")
+fig2 = px.line(monthly, title="Monthly Spending Trend")
 
-st.plotly_chart(fig2,use_container_width=True)
+st.plotly_chart(fig2, use_container_width=True)
 
-# AI insights
-st.subheader("AI Insights")
 
-top_cat = cat.sort_values("Amount",ascending=False).iloc[0]["Category"]
+# ----------------------------
+# ML Prediction
+# ----------------------------
+st.subheader("AI Spending Prediction")
 
-st.info(f"Highest spending category: {top_cat}")
+if len(df) > 5:
 
-# ML prediction
-pred = predict_spending(df)
+    df["Day"] = df["Date"].dt.dayofyear
 
-st.metric("Predicted next month spending",f"₹{int(pred)}")
+    X = df[["Day"]]
 
+    y = df["Amount"]
+
+    model = LinearRegression()
+
+    model.fit(X,y)
+
+    future = np.array([[df["Day"].max()+30]])
+
+    prediction = model.predict(future)
+
+    st.metric("Predicted Next Month Spending", f"₹{int(prediction[0])}")
+
+
+# ----------------------------
 # Table
+# ----------------------------
 st.subheader("Transactions")
 
-st.dataframe(df,use_container_width=True)
+st.dataframe(df, use_container_width=True)
